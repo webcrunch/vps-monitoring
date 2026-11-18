@@ -12,6 +12,11 @@
 #
 # Images are pinned to the versions running on the server, so a deploy never upgrades by surprise.
 # Upgrade one by changing its tag here.
+#
+# Grafana (jarllindquist.com/grafana/) and Prometheus (jarllindquist.com/prometheus/) are also
+# reached through Traefik, behind the magic-link login: the middleware ops-auth@docker from
+# auth-gateway asks for a valid login before every request. Paths, not subdomains, so no DNS
+# records are needed.
 
 services:
   prometheus:
@@ -23,11 +28,24 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      # Links in the UI point at /prometheus/, but Prometheus itself still answers on / (Traefik
+      # strips the prefix), so Grafana's data source http://prometheus:9090 keeps working
+      - "--web.external-url=https://jarllindquist.com/prometheus/"
+      - "--web.route-prefix=/"
     ports:
       - "127.0.0.1:9090:9090"
     networks:
       - monitor-net
       - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.prometheus.rule=Host(`jarllindquist.com`) && PathPrefix(`/prometheus`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=myresolver"
+      - "traefik.http.routers.prometheus.middlewares=ops-auth@docker,prometheus-strip"
+      - "traefik.http.middlewares.prometheus-strip.stripprefix.prefixes=/prometheus"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
     restart: always
 
   cadvisor:
@@ -45,6 +63,10 @@ services:
       - monitor-net
     restart: always
 
+  # Behind the login, Grafana trusts the user name auth-gateway puts in X-WEBAUTH-USER (Traefik
+  # replaces any such header from the browser), so you land logged in as admin. The admin password
+  # still works through the tunnel: ssh -L 3000:127.0.0.1:3000 user@server, then
+  # http://localhost:3000/grafana/
   grafana:
     image: grafana/grafana:12.3.1
     container_name: grafana
@@ -52,8 +74,25 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SERVER_ROOT_URL=https://jarllindquist.com/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_AUTH_PROXY_ENABLED=true
+      - GF_AUTH_PROXY_HEADER_NAME=X-WEBAUTH-USER
+      - GF_AUTH_PROXY_HEADER_PROPERTY=username
+      # Only existing users: a name Grafana doesn't know gets an error, not a new account
+      - GF_AUTH_PROXY_AUTO_SIGN_UP=false
     networks:
       - monitor-net
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.grafana.rule=Host(`jarllindquist.com`) && PathPrefix(`/grafana`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=myresolver"
+      - "traefik.http.routers.grafana.middlewares=ops-auth@docker"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
     restart: always
 
   # Loki stores the logs Promtail collects; Grafana reads them. Its API has no login, so it must
