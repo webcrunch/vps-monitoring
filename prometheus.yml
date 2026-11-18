@@ -1,8 +1,20 @@
 global:
-  scrape_interval: 15s
+  scrape_interval: 5s
+  evaluation_interval: 5s
 
-# cAdvisor listens on 8080 inside the network (8082 was only the published host port).
 scrape_configs:
-  - job_name: "docker-containers"
+  # Prometheus's own health
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # cAdvisor: CPU, memory and network per container (8080 inside monitor-net)
+  - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]
+
+  # The predictor's FastAPI app in production, reached over traefik-net
+  - job_name: "predictor-backend"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["predictor_api_prod:8000"]
