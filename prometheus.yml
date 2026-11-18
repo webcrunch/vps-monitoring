@@ -1,7 +1,8 @@
 global:
   scrape_interval: 15s
 
+# cAdvisor listens on 8080 inside the network (8082 was only the published host port).
 scrape_configs:
   - job_name: "docker-containers"
     static_configs:
-      - targets: ["cadvisor:8082"]
+      - targets: ["cadvisor:8080"]
