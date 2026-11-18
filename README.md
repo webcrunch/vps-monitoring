@@ -25,7 +25,7 @@ Alla portar är bundna till `127.0.0.1`. Docker går förbi brandväggen (ufw) f
 ### 🚀 Kom igång
 1. Klona repot till din VPS (nätverket `traefik-net` måste finnas).
 2. Kör `docker compose up -d`.
-3. Öppna en SSH-tunnel (`ssh -L 3000:127.0.0.1:3000 user@server`) och logga in på Grafana på http://localhost:3000. Byt admin-lösenordet direkt (standard är admin/admin). Lägg till Prometheus (`http://prometheus:9090`) och Loki (`http://loki:3100`) som datakällor och importera dashboard ID `14282`.
+3. Öppna en SSH-tunnel (`ssh -L 3000:127.0.0.1:3000 user@server`) och logga in på Grafana på http://localhost:3000/grafana/. Vanligtvis behövs ingen tunnel: Grafana och Prometheus finns på https://jarllindquist.com/grafana/ och /prometheus/, bakom magic link-inloggningen (auth-gateway). Byt admin-lösenordet direkt (standard är admin/admin). Lägg till Prometheus (`http://prometheus:9090`) och Loki (`http://loki:3100`) som datakällor och importera dashboard ID `14282`.
 
 ---
 
@@ -50,6 +50,6 @@ All ports are bound to `127.0.0.1`. Docker bypasses the host firewall (ufw) for 
 ### 🚀 Quick Start
 1. Clone the repository to your VPS (the `traefik-net` network must exist).
 2. Run `docker compose up -d`.
-3. Open an SSH tunnel (`ssh -L 3000:127.0.0.1:3000 user@server`) and log in to Grafana at http://localhost:3000. Change the admin password at once (the default is admin/admin). Add Prometheus (`http://prometheus:9090`) and Loki (`http://loki:3100`) as data sources, and import dashboard ID `14282`.
+3. Open an SSH tunnel (`ssh -L 3000:127.0.0.1:3000 user@server`) and log in to Grafana at http://localhost:3000/grafana/. Usually no tunnel is needed: Grafana and Prometheus are at https://jarllindquist.com/grafana/ and /prometheus/, behind the magic-link login (auth-gateway). Change the admin password at once (the default is admin/admin). Add Prometheus (`http://prometheus:9090`) and Loki (`http://loki:3100`) as data sources, and import dashboard ID `14282`.
 
 ---
