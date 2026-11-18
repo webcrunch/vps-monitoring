@@ -66,7 +66,7 @@ services:
   # Behind the login, Grafana trusts the user name auth-gateway puts in X-WEBAUTH-USER (Traefik
   # replaces any such header from the browser), so you land logged in as admin. It trusts that header
   # only from grafana-proxy: an internal network with Traefik and Grafana alone. Traefik's compose
-  # file defines it (internal, 172.30.42.0/29), so it exists whenever Traefik runs. The other apps on
+  # file defines it (internal, 10.250.42.0/29), so it exists whenever Traefik runs. The other apps on
   # traefik-net can't reach Grafana at all, so none of them can send the header itself.
   # The admin password still works through the tunnel: ssh -L 3000:127.0.0.1:3000 user@server, then
   # http://localhost:3000/grafana/
@@ -85,7 +85,7 @@ services:
       - GF_AUTH_PROXY_HEADER_PROPERTY=username
       # Only existing users: a name Grafana doesn't know gets an error, not a new account
       - GF_AUTH_PROXY_AUTO_SIGN_UP=false
-      - GF_AUTH_PROXY_WHITELIST=172.30.42.0/29
+      - GF_AUTH_PROXY_WHITELIST=10.250.42.0/29
     networks:
       - monitor-net
       - grafana-proxy
