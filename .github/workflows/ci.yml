@@ -1,0 +1,40 @@
+name: CI
+
+# Checks the monitoring stack before anything reaches the server: the compose file and the
+# Prometheus config are valid, and no port is published to the internet.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose file is valid
+        run: docker compose -f docker-compose.yml config -q
+
+      - name: No port published to the internet
+        run: bash scripts/check-ports.sh docker-compose.yml
+
+      - name: The port check rejects a public port
+        run: |
+          if bash scripts/check-ports.sh tests/public-port.yml; then
+            echo "check-ports.sh accepted tests/public-port.yml, which publishes 9090 to everyone"
+            exit 1
+          fi
+          echo "check-ports.sh rejected the public port, as it should"
+
+      # promtool from the same Prometheus image the compose file runs, so the check matches production.
+      - name: Prometheus config is valid
+        run: |
+          image=$(docker compose -f docker-compose.yml config --format json | jq -r '.services.prometheus.image')
+          echo "promtool from $image"
+          docker run --rm -v "$PWD/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            --entrypoint promtool "$image" check config /etc/prometheus/prometheus.yml

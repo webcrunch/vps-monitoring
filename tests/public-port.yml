@@ -1,0 +1,8 @@
+# A compose file that check-ports.sh must reject: CI runs the check on it and expects a failure,
+# so a check that passes everything is caught.
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "127.0.0.1:8080:80"
+      - "9090:9090"
