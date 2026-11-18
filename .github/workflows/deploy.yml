@@ -1,0 +1,125 @@
+name: Deploy
+
+# Brings the server's monitoring stack (/home/vps-monitoring) in line with this repo.
+# For now it runs only by hand (Actions -> Deploy -> Run workflow). Once a few runs have gone
+# through, it can also run after a green CI on main (workflow_run, as in dsa-visualizer).
+on:
+  workflow_dispatch:
+
+# One deploy at a time; never cancelled halfway.
+concurrency:
+  group: monitoring-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_DIR: /home/vps-monitoring
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same checks as CI, so a hand-started run cannot ship a public port either.
+      - name: Check before deploying
+        run: |
+          docker compose -f docker-compose.yml config -q
+          bash scripts/check-ports.sh docker-compose.yml
+
+      - name: Import secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.jarllindquist.com
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            kv/data/server-deploy SSH_HOST | SERVER_HOST ;
+            kv/data/server-deploy SSH_USERNAME | SERVER_USER ;
+            kv/data/server-deploy SERVER_PORT | SERVER_PORT ;
+            kv/data/server-deploy SSH_PRIVATE_KEY | SERVER_PRIVATE_KEY ;
+            kv/data/server-deploy SSH_HOST_FINGERPRINT | SSH_HOST_FINGERPRINT
+
+      # The files land in .incoming first; the next step checks them before they replace the
+      # running ones. The appleboy actions are pinned to a commit, and they check the server's
+      # identity against the fingerprint in Vault.
+      - name: Copy the files to the server
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          key: ${{ env.SERVER_PRIVATE_KEY }}
+          port: ${{ env.SERVER_PORT }}
+          fingerprint: ${{ env.SSH_HOST_FINGERPRINT }}
+          source: docker-compose.yml,prometheus.yml,promtail-config.yaml
+          target: ${{ env.DEPLOY_DIR }}/.incoming
+          rm: true
+
+      - name: Start on the server
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          key: ${{ env.SERVER_PRIVATE_KEY }}
+          port: ${{ env.SERVER_PORT }}
+          fingerprint: ${{ env.SSH_HOST_FINGERPRINT }}
+          envs: DEPLOY_DIR
+          script: |
+            set -eu
+            cd "$DEPLOY_DIR"
+            FILES="docker-compose.yml prometheus.yml promtail-config.yaml"
+
+            healthy() {
+              # Up to 2 minutes: Loki waits a while after starting before it reports ready
+              for i in $(seq 1 40); do
+                if curl -fsS -o /dev/null http://127.0.0.1:9090/-/ready \
+                  && curl -fsS -o /dev/null http://127.0.0.1:3100/ready \
+                  && curl -fsS -o /dev/null http://127.0.0.1:3000/api/health \
+                  && curl -fsS -o /dev/null http://127.0.0.1:8082/healthz \
+                  && [ "$(docker compose ps --status running -q | wc -l)" -eq 5 ]; then
+                  return 0
+                fi
+                sleep 3
+              done
+              return 1
+            }
+
+            # Keep what runs now, to roll back to
+            mkdir -p .previous
+            for f in $FILES; do [ -f "$f" ] && cp -p "$f" .previous/; done
+
+            for f in $FILES; do cp .incoming/"$f" "$f"; done
+            docker compose pull -q
+            docker compose up -d --remove-orphans
+            # The config files are bind-mounted one by one: a container keeps the old file until it
+            # restarts, so the two that read one are restarted (their data lives in volumes).
+            docker compose restart prometheus promtail
+
+            if healthy; then
+              docker compose ps
+              docker image prune -f
+              echo "Monitoring stack is up"
+            else
+              echo "Not healthy after the deploy: rolling back to the previous files"
+              docker compose ps
+              for f in $FILES; do [ -f .previous/"$f" ] && cp -p .previous/"$f" "$f"; done
+              docker compose up -d --remove-orphans
+              docker compose restart prometheus promtail
+              exit 1
+            fi
+
+      # From outside (this runner): none of the monitoring ports may answer.
+      - name: Check that no port is public
+        run: |
+          open=0
+          for p in 3000 3100 8082 9090; do
+            if curl -s -m 5 -o /dev/null "http://$SERVER_HOST:$p/"; then
+              echo "Port $p answers from the internet"; open=1
+            else
+              echo "Port $p: closed"
+            fi
+          done
+          exit $open

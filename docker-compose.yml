@@ -1,17 +1,24 @@
-version: "3.8"
-
+# The monitoring stack as it runs on the server (/home/vps-monitoring), deployed by
+# .github/workflows/deploy.yml.
+#
 # Every port is bound to 127.0.0.1: reachable from the server itself or through an SSH tunnel
 # (ssh -L 3000:127.0.0.1:3000 user@server), never from the internet. Docker's published ports go
-# around the host firewall (ufw), so "0.0.0.0" here would mean public whatever ufw says.
-# Prometheus reaches cAdvisor over monitor-net and needs no published port for that.
-# Images are pinned to the versions running on the server, so "up -d" never upgrades by surprise.
+# around the host firewall (ufw), so a port without "127.0.0.1:" is public whatever ufw says.
+# CI (scripts/check-ports.sh) refuses a port that is not bound to 127.0.0.1.
+#
+# The services talk to each other over monitor-net (prometheus -> cadvisor:8080,
+# promtail -> loki:3100, grafana -> prometheus:9090 and loki:3100). Prometheus is also on
+# traefik-net, to scrape the apps there (predictor_api_prod:8000).
+#
+# Images are pinned to the versions running on the server, so a deploy never upgrades by surprise.
+# Upgrade one by changing its tag here.
 
 services:
   prometheus:
     image: prom/prometheus:v2.53.4
     container_name: prometheus
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -20,6 +27,7 @@ services:
       - "127.0.0.1:9090:9090"
     networks:
       - monitor-net
+      - traefik-net
     restart: always
 
   cadvisor:
@@ -48,6 +56,31 @@ services:
       - monitor-net
     restart: always
 
+  # Loki stores the logs Promtail collects; Grafana reads them. Its API has no login, so it must
+  # never be public (anyone could read every container's logs, or push fake ones).
+  loki:
+    image: grafana/loki:3.7.8
+    container_name: loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitor-net
+    restart: always
+
+  # Promtail tails every container's log file and sends the lines to Loki.
+  promtail:
+    image: grafana/promtail:3.6.8
+    container_name: promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail-config.yaml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitor-net
+    restart: always
+
 volumes:
   prometheus_data:
   grafana_data:
@@ -55,3 +88,5 @@ volumes:
 networks:
   monitor-net:
     driver: bridge
+  traefik-net:
+    external: true
