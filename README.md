@@ -13,10 +13,13 @@ En centraliserad monitorerings- och loggningsstack byggd med **Docker Compose**,
 * **Prometheus:** En tidsdatabas som hämtar (skrapar) mätvärden från cAdvisor var 15:e sekund.
 * **Grafana:** Visualiseringslagret som kopplas till Prometheus för att rita upp interaktiva realtids-dashboards.
 
+### 🔒 Inget är öppet mot internet
+Alla tre portar är bundna till `127.0.0.1`. Docker går förbi brandväggen (ufw) för publicerade portar, så en port utan `127.0.0.1:` är öppen för alla. Nå dem via en SSH-tunnel.
+
 ### 🚀 Kom igång snabbt
 1. Klona repot till din VPS.
 2. Kör `docker compose up -d`.
-3. Logga in på Grafana på port `3000` (admin/admin), lägg till Prometheus (`http://prometheus:9090`) som datakälla och importera dashboard ID `14282`.
+3. Öppna en SSH-tunnel (`ssh -L 3000:127.0.0.1:3000 user@server`) och logga in på Grafana på http://localhost:3000. Byt admin-lösenordet direkt (standard är admin/admin). Lägg till Prometheus (`http://prometheus:9090`) som datakälla och importera dashboard ID `14282`.
 
 ---
 
@@ -29,9 +32,12 @@ A centralized, production-ready monitoring and logging stack built with **Docker
 * **Prometheus:** A time-series database that scrapes metrics from cAdvisor at regular intervals (15s).
 * **Grafana:** The visualization layer that connects to Prometheus to render real-time, interactive dashboards.
 
+### 🔒 Nothing is open to the internet
+All three ports are bound to `127.0.0.1`. Docker bypasses the host firewall (ufw) for published ports, so a port without `127.0.0.1:` is open to everyone. Reach them through an SSH tunnel.
+
 ### 🚀 Quick Start
 1. Clone the repository to your VPS.
 2. Run `docker compose up -d`.
-3. Log in to Grafana on port `3000` (admin/admin), add Prometheus (`http://prometheus:9090`) as a data source, and import dashboard ID `14282`.
+3. Open an SSH tunnel (`ssh -L 3000:127.0.0.1:3000 user@server`) and log in to Grafana at http://localhost:3000. Change the admin password at once (the default is admin/admin). Add Prometheus (`http://prometheus:9090`) as a data source, and import dashboard ID `14282`.
 
 ---

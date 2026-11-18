@@ -1,8 +1,14 @@
 version: "3.8"
 
+# Every port is bound to 127.0.0.1: reachable from the server itself or through an SSH tunnel
+# (ssh -L 3000:127.0.0.1:3000 user@server), never from the internet. Docker's published ports go
+# around the host firewall (ufw), so "0.0.0.0" here would mean public whatever ufw says.
+# Prometheus reaches cAdvisor over monitor-net and needs no published port for that.
+# Images are pinned to the versions running on the server, so "up -d" never upgrades by surprise.
+
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.4
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
@@ -11,7 +17,7 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - monitor-net
     restart: always
@@ -26,16 +32,16 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080"
     networks:
       - monitor-net
     restart: always
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.3.1
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
     networks:
